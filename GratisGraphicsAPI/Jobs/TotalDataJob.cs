@@ -1,7 +1,7 @@
-﻿using MainGraphicsAPI.Controllers;
+﻿using GratisGraphicsAPI.Controllers;
 using Quartz;
 
-namespace MainGraphicsAPI.Jobs
+namespace GratisGraphicsAPI.Jobs
 {
     public class TotalDataJob : IJob
     {
@@ -14,6 +14,6 @@ namespace MainGraphicsAPI.Jobs
         {
             _tableService.GetTableSizes();
         }
-    
+
     }
 }

@@ -1,9 +1,7 @@
-﻿using MainGraphicsAPI.Models;
+﻿using GratisGraphicsAPI.Models;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
-using System.Data.SqlClient;
 
-namespace MainGraphicsAPI.Controllers
+namespace GratisGraphicsAPI.Controllers
 {
     [Route("api/[controller]")]
     [ApiController]
@@ -34,3 +32,4 @@ namespace MainGraphicsAPI.Controllers
         }
     }
 }
+

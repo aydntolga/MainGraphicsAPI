@@ -1,7 +1,7 @@
-﻿using Quartz;
-using Quartz.Impl;
+﻿using Quartz.Impl;
+using Quartz;
 
-namespace MainGraphicsAPI.Jobs
+namespace GratisGraphicsAPI.Jobs
 {
     public class QuartzScheduler
     {
@@ -26,7 +26,7 @@ namespace MainGraphicsAPI.Jobs
             scheduler.Start();
             scheduler.Shutdown();
 
-            
+
         }
     }
 }

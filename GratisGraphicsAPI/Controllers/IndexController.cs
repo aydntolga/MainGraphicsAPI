@@ -1,34 +1,38 @@
-﻿using MainGraphicsAPI.Models;
+﻿using GratisGraphicsAPI.Models;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Extensions.Configuration;
+using Microsoft.Data.SqlClient;
 using System;
-using System.Collections.Generic;
-using System.Data.SqlClient;
-using System.Threading.Tasks;
 
-namespace MainGraphicsAPI.Controllers
+namespace GratisGraphicsAPI.Controllers
 {
     [Route("api/[controller]")]
     [ApiController]
     public class IndexController : Controller
     {
         private readonly MyDbContext _context;
-        private readonly IConfiguration _configuration;
 
-        public IndexController(MyDbContext context, IConfiguration configuration)
+        public IndexController(MyDbContext context)
         {
             _context = context;
-            _configuration = configuration;
         }
 
         private string GetDatabaseConnectionString()
         {
             try
             {
-                var databaseConnectionString = _configuration.GetConnectionString("DatabaseConnectionNorthwind");
+                // IConfiguration nesnesini yaratın
+                var configBuilder = new ConfigurationBuilder()
+                    .SetBasePath(Directory.GetCurrentDirectory())
+                    .AddJsonFile("appsettings.json", optional: true, reloadOnChange: true);
+
+                IConfigurationRoot configuration = configBuilder.Build();
+
+                // Bağlantı dizesini al
+                var databaseConnectionString = configuration.GetConnectionString("DatabaseConnectionGratis");
 
                 if (string.IsNullOrEmpty(databaseConnectionString))
                 {
+                    // Eğer bağlantı dizesi tanımlı değilse hata fırlatın
                     throw new InvalidOperationException("Database connection string not found in appsettings.json.");
                 }
 
@@ -36,10 +40,12 @@ namespace MainGraphicsAPI.Controllers
             }
             catch (Exception ex)
             {
+                // Loglama yapabilir veya hata işleme stratejilerinizi burada uygulayabilirsiniz
                 Console.WriteLine($"Error getting database connection string: {ex.Message}");
-                throw;
+                throw; // Hata fırlatılır, bu da uygulamanın başarısız olmasına neden olur
             }
         }
+
 
         [HttpGet("/mostindex")]
         public async Task<IActionResult> GetMostUsedIndexes()
@@ -102,6 +108,7 @@ namespace MainGraphicsAPI.Controllers
             }
             catch (Exception ex)
             {
+                // Log the detailed exception message
                 Console.WriteLine($"Error: {ex.Message}");
                 return StatusCode(500, "Internal Server Error");
             }
