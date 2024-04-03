@@ -1,102 +1,200 @@
 ﻿using System;
-using System.Diagnostics;
-using System.Net.Http;
+using System.Collections.Generic;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Hosting;
 using System.ServiceProcess;
-using System.Threading;
-using System.Threading.Tasks;
+using System.Data.SqlClient;
+using System.Timers;
+using ApiService.Infos;
 
 namespace ApiService
 {
     public partial class Service1 : ServiceBase
     {
-        private Process process1;
-        private Process process2;
+        private Timer timer;
+        private IConfigurationRoot configuration;
 
-        public Service1()
+        public Service2()
         {
             InitializeComponent();
         }
 
-        protected override async void OnStart(string[] args)
+        protected override void OnStart(string[] args)
         {
-            try
-            {
-                string projectPath1 = @"D:\MainGraphicsAPI\GratisGraphicsAPI\GratisGraphicsAPI.csproj";
-                string projectPath2 = @"D:\MainGraphicsAPI\MainGraphicsAPI\MainGraphicsAPI.csproj";
+            // Konfigürasyon dosyasını yükleyin
+            var builder = new ConfigurationBuilder()
+                .SetBasePath(AppDomain.CurrentDomain.BaseDirectory)
+                .AddJsonFile("appsettings.json", optional: false, reloadOnChange: true);
 
-                await StartProjectAsync(projectPath1, 5205);
-                await StartProjectAsync(projectPath2, 5036);
+            configuration = builder.Build();
 
-                // Projeler başlatıldıktan sonra Swagger sayfalarını tarayıcıda aç
-                await OpenSwaggerInBrowser(5205); // Projelerin portlarına göre güncelleyin
-                await OpenSwaggerInBrowser(5036);
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine("Hata: " + ex.Message);
-                // Hizmeti durdurmak yerine hata mesajını kaydetmeyi veya uyarı göndermeyi değerlendirin.
-                //StopService();
-            }
-        }
-
-        private async Task StartProjectAsync(string projectPath, int port)
-        {
-            using (Process process = new Process())
-            {
-                process.StartInfo.FileName = "iisexpress.exe";
-                process.StartInfo.Arguments = $"/path:\"{projectPath}\" /port:{port}";
-                process.Start();
-
-                // Projeyi başlatıldıktan sonra IIS sinyalini bekleyin.
-                await Task.Run(() => process.WaitForExit(Timeout.Infinite));
-
-                if (!process.HasExited)
-                {
-                    Console.WriteLine("Proje başlatılamadı.");
-                    // Hata durumunda projeyi durdurun.
-                    process.Kill();
-                    process.WaitForExit();
-                }
-            }
-        }
-
-        private async Task OpenSwaggerInBrowser(int port)
-        {
-            string swaggerUrl = $"http://localhost:{port}/swagger/index.html";
-            using (HttpClient client = new HttpClient())
-            {
-                try
-                {
-                    HttpResponseMessage response = await client.GetAsync(swaggerUrl);
-                    if (response.IsSuccessStatusCode)
-                    {
-                        Console.WriteLine($"Swagger sayfası başarıyla açıldı: {swaggerUrl}");
-                    }
-                    else
-                    {
-                        Console.WriteLine($"Swagger sayfası açılamadı. Hata kodu: {response.StatusCode}");
-                    }
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"Swagger sayfasını açarken bir hata oluştu: {ex.Message}");
-                }
-            }
+            timer = new Timer();
+            timer.Elapsed += new ElapsedEventHandler(OnTimerElapsed);
+            timer.Interval = 60 * 1000;
+            timer.Enabled = true;
         }
 
         protected override void OnStop()
         {
-            StopProject(process1);
-            StopProject(process2);
+            timer.Enabled = false;
         }
 
-        private void StopProject(Process process)
+        private void OnTimerElapsed(object sender, ElapsedEventArgs e)
         {
-            if (process != null && !process.HasExited)
+            SyncAllDatabases();
+        }
+
+        private void SyncAllDatabases()
+        {
+            
+            using (SqlConnection centralConnection = new SqlConnection(configuration.GetConnectionString("CentralDatabase")))
             {
-                process.Kill();
-                process.WaitForExit();
+                centralConnection.Open();
+
+               
+                foreach (var databaseInfo in GetDatabaseInfo())
+                {
+                    SyncDatabaseData(databaseInfo, centralConnection);
+                }
+
+                centralConnection.Close();
             }
+        }
+
+        private void SyncDatabaseData(DatabaseInfo databaseInfo, SqlConnection destinationConnection)
+        {
+            using (SqlConnection sourceConnection = new SqlConnection(configuration.GetConnectionString(databaseInfo.Name)))
+            {
+                sourceConnection.Open();
+
+                foreach (var tableInfo in databaseInfo.Tables)
+                {
+                    SyncTableData(databaseInfo.Name, tableInfo, sourceConnection, destinationConnection);
+                }
+
+                sourceConnection.Close();
+            }
+        }
+
+        private void SyncTableData(string databaseName, TableInfo tableInfo, SqlConnection sourceConnection, SqlConnection destinationConnection)
+        {
+            using (SqlCommand sourceCommand = new SqlCommand($"SELECT * FROM {tableInfo.Name}", sourceConnection))
+            using (SqlDataReader reader = sourceCommand.ExecuteReader())
+            {
+                while (reader.Read())
+                {
+                    // Veritabanından gelen verileri oku
+                    string customerName = reader["CustomerName"].ToString();
+                    int totalTableSize = Convert.ToInt32(reader["TotalTableSize"]);
+                    int totalIndexSizes = Convert.ToInt32(reader["TotalIndexSizes"]);
+                    float fragmentationRatio = Convert.ToSingle(reader["FragmentationRatio"]);
+                    string mostUsedIndexes = reader[tableInfo.MostUsedIndexColumn].ToString(); 
+                    
+                    using (SqlCommand insertCommand = new SqlCommand("INSERT INTO CustomerInfo (CustomerName, TotalTableSize, TotalIndexSizes, FragmentationRatio, MostUsedIndexes) VALUES (@CustomerName, @TotalTableSize, @TotalIndexSizes, @FragmentationRatio, @MostUsedIndexes)", destinationConnection))
+                    {
+                        insertCommand.Parameters.AddWithValue("@CustomerName", $"{databaseName} - {tableInfo.Name} - {customerName}");
+                        insertCommand.Parameters.AddWithValue("@TotalTableSize", totalTableSize);
+                        insertCommand.Parameters.AddWithValue("@TotalIndexSizes", totalIndexSizes);
+                        insertCommand.Parameters.AddWithValue("@FragmentationRatio", fragmentationRatio);
+                        insertCommand.Parameters.AddWithValue("@MostUsedIndexes", mostUsedIndexes);
+
+                        insertCommand.ExecuteNonQuery();
+                    }
+                }
+            }
+        }
+
+        private List<DatabaseInfo> GetDatabaseInfo()
+        {
+            
+            List<DatabaseInfo> databaseInfos = new List<DatabaseInfo>
+            {
+                new DatabaseInfo
+                {
+                    Name = "Northwind",
+                    Tables = new List<TableInfo>
+                    {
+                        new TableInfo
+                        {
+                            Name = "Personeller",
+                            TotalTableSizeColumn = "totalTableSizeGB",
+                            MostUsedIndexColumn = "mostUsedIndex"
+                        },
+                        new TableInfo
+                        {
+                            Name = "Satislar",
+                            TotalTableSizeColumn = "totalTableSizeGB",
+                            MostUsedIndexColumn = "mostUsedIndex"
+                        },
+                        new TableInfo
+                        {
+                            Name = "Kategoriler",
+                            TotalTableSizeColumn = "totalTableSizeGB",
+                            MostUsedIndexColumn = "mostUsedIndex"
+                        },
+                        new TableInfo
+                        {
+                            Name = "sysdiagrams",
+                            TotalTableSizeColumn = "totalTableSizeGB",
+                            MostUsedIndexColumn = "mostUsedIndex"
+                        },
+                        new TableInfo
+                        {
+                            Name = "SatisDetaylar",
+                            TotalTableSizeColumn = "totalTableSizeGB",
+                            MostUsedIndexColumn = "mostUsedIndex"
+                        }
+                        // Ek tablo bilgilerini ekleyin
+                    }
+                },
+                new DatabaseInfo
+                {
+                    Name= "Gratis",
+                    Tables = new List<TableInfo>
+                    {
+                        new TableInfo
+                        {
+                            Name = "Kategoriler",
+                            TotalTableSizeColumn = "totalTableSizeGB",
+                            MostUsedIndexColumn = "mostUsedIndex"
+                        },
+
+                       new TableInfo
+                       {
+                            Name = "KozmetikFirmalari",
+                            TotalTableSizeColumn = "totalTableSizeGB",
+                            MostUsedIndexColumn = "mostUsedIndex"
+                        },
+                       new TableInfo
+                       {
+                            Name = "Musteriler",
+                            TotalTableSizeColumn = "totalTableSizeGB",
+                            MostUsedIndexColumn = "mostUsedIndex"
+                        },
+                       new TableInfo
+                       {
+                            Name = "SiparisDetaylari",
+                            TotalTableSizeColumn = "totalTableSizeGB",
+                            MostUsedIndexColumn = "mostUsedIndex"
+                        },
+                       new TableInfo
+                       {
+                            Name = "Siparisler",
+                            TotalTableSizeColumn = "totalTableSizeGB",
+                            MostUsedIndexColumn = "mostUsedIndex"
+                        },
+                       new TableInfo
+                       {
+                            Name = "Urunler",
+                            TotalTableSizeColumn = "totalTableSizeGB",
+                            MostUsedIndexColumn = "mostUsedIndex"
+                        },
+                    }
+                }
+                // Ek veritabanı bilgilerini ekleyin
+            };
+
+            return databaseInfos;
         }
     }
 }

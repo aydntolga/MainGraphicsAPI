@@ -1,6 +1,6 @@
-﻿namespace ApiService
+﻿namespace CentralWriter
 {
-    partial class Service2
+    partial class Service1
     {
         /// <summary> 
         /// Required designer variable.

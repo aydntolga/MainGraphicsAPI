@@ -1,25 +1,21 @@
-using MainGraphicsAPI.Controllers;
-using MainGraphicsAPI.Jobs;
-using MainGraphicsAPI.Models;
-using MainGraphicsAPI.Services;
+using APIAdventureWorks.Controllers;
+using APIAdventureWorks.Models;
+using APIAdventureWorks.Services;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
-
-// Add services to the container.
-
 builder.Services.AddCors();
 builder.Services.AddDbContext<MyDbContext>(options =>
 {
-    options.UseSqlServer("Data Source=localhost;Initial Catalog=Northwind;Integrated Security=True");
+    options.UseSqlServer("Data Source=localhost;Initial Catalog=Gratis;Integrated Security=True");
 });
+// Add services to the container.
 
 builder.Services.AddControllers();
-QuartzScheduler.Start();
 
-builder.Services.AddScoped<ITableService, TableServices>(); 
+builder.Services.AddScoped<ITableService, TableServices>();
 
-
+// Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
@@ -37,6 +33,7 @@ app.UseCors(options => options
     .AllowAnyMethod()
     .AllowCredentials()
     );
+
 app.UseAuthorization();
 
 app.MapControllers();
